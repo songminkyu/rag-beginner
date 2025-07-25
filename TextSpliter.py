@@ -17,4 +17,4 @@ texts = text_splitter.split_documents(pages)
 print('분할된 청크의 수:', len(texts))
 
 
-print('첫번째 청크 출력:', texts[1])
+print('첫번째 청크 출력:', texts[1].page_content)
