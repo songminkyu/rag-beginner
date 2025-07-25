@@ -5,6 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "langchain>=0.3.27",
+    "langchain-community>=0.3.27",
     "numpy>=2.3.2",
+    "pypdf>=5.8.0",
     "requests>=2.32.4",
 ]
