@@ -1,5 +1,6 @@
 import numpy as np
-import cossim
+from utils import cossim
+
 
 def cos_sim_test():
     A = np.array([0, 1, 1, 1])

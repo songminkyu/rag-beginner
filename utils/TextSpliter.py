@@ -2,7 +2,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
 
 # PyPDFLoader를 사용하여 PDF 파일 로드
-loader = PyPDFLoader("./Data/2024_KB_부동산_보고서_최종.pdf")
+loader = PyPDFLoader("../Data/2024_KB_부동산_보고서_최종.pdf")
 pages = loader.load()
 
 # PDF 파일의 모든 페이지에서 텍스트를 추출하여 총 글자 수 계산
