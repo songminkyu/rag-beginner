@@ -5,13 +5,97 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+
+    # langchain
+    "langchain>=0.3.28",
+    "langchain-community>=0.3.28",
+    "langchain-core>=0.3.72",
+    "langchain-anthropic>=0.3.28",
+    "langchain-openai>=0.3.28",
+    "langchain-experimental>=0.3.4",
+
+    # LlamaIndex
+    "llama-index>=0.12.52",
+    "llama-index-core>=0.12.52.post1",
+    "llama-index-llms-openai>=0.4.7",
+    "llama-index-llms-anthropic>=0.7.6",
+    "llama-index-llms-langchain>=0.6.1",
+    "llama-index-embeddings-openai>=0.3.1",
+    "llama-index-vector-stores-chroma>=0.4.2",
+    "llama-index-vector-stores-faiss>=0.4.0",
+
+    # Vector stores and search
+    "chromadb>=1.0.15",
+    "faiss-cpu>=1.11.0.post1",
+    "pinecone-client>=6.0.0",
+
+    # Document processing
+    "pypdf>=5.8.0",
+    "python-docx>=1.2.0",
+    "unstructured>=0.18.11",
+    "beautifulsoup4>=4.13.4",
+    "markdown>=3.8.2",
+
+    # Embeddings and models
+    "sentence-transformers>=5.0.0",
+    "transformers>=4.54.0",
+    "torch>=2.7.1",
+    "accelerate>=1.9.0",
+
+    # OpenAI and Anthropic APIs
+    "openai>=1.97.1",
+    "anthropic>=0.59.0",
+
+    # Local model serving (Ollama integration)
+    "ollama>=0.5.1",
+    "requests>=2.32.4",
+
+    # Web interfaces
+    "gradio>=5.38.2",
+    "streamlit>=1.47.1",
+    "fastapi>=0.116.1",
+    "uvicorn>=0.35.0",
+
+    # Data handling and utilities
+    "pandas>=2.3.1",
     "flax>=0.10.7",
     "jax>=0.7.0",
     "jaxlib>=0.7.0",
-    "langchain>=0.3.27",
-    "langchain-community>=0.3.27",
-    "matplotlib>=3.10.3",
     "numpy>=2.3.2",
-    "pypdf>=5.8.0",
-    "requests>=2.32.4",
+    "python-dotenv>=1.1.1",
+    "pydantic>=2.11.7",
+    "pyyaml>=6.0.2",
+
+    # Evaluation and metrics
+    "ragas>=0.3.0",
+    "nltk>=3.9.1",
+    "rouge-score>=0.1.2",
+    "bert-score>=0.3.13",
+
+    # Visualization and analysis
+    "matplotlib>=3.10.3",
+    "seaborn>=0.13.2",
+    "plotly>=6.2.0",
+    "jupyter>1.1.0",
+    "notebook>=7.4.4",
+
+    # Development and testing
+    "pytest>=8.4.1",
+    "black>=25.1.0",
+    "flake8>=7.3.0",
+    "mypy>=1.17.0",
+    "pre-commit>=4.2.0",
+
+    # Monitoring and logging
+    "wandb>=0.21.0",
+    "loguru>=0.7.3",
+
+    # Korean language processing (for EXAONE)
+    "konlpy>=0.6.0",
+    "kss>=6.0.4",
+
+    # Performance and optimization
+    "psutil>=7.0.0",
+    "memory-profiler>=0.61.0",
+
 ]
