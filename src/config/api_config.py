@@ -1,3 +1,8 @@
+"""
+API Configuration for LLM Providers
+2025년 최신 API 설정 관리
+"""
+
 import os
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
@@ -16,7 +21,7 @@ class OpenAIConfig:
     embedding_model: str = "text-embedding-3-large"
     max_tokens: int = 4096
     temperature: float = 0.1
-
+    
     @classmethod
     def from_env(cls) -> "OpenAIConfig":
         return cls(
@@ -36,7 +41,7 @@ class ClaudeConfig:
     model: str = "claude-3-5-sonnet-20241022"
     max_tokens: int = 8192
     temperature: float = 0.1
-
+    
     @classmethod
     def from_env(cls) -> "ClaudeConfig":
         return cls(
@@ -49,24 +54,30 @@ class ClaudeConfig:
 
 @dataclass
 class LocalModelConfig:
-    """로컬 모델 (EXAONE via Ollama) 설정"""
-    base_url: str = "http://localhost:11434"
-    model: str = "exaone-deep:32b"
+    """로컬 모델 (EXAONE via Hugging Face Transformers) 설정"""
+    model: str = "LGAI-EXAONE/EXAONE-4.0-32B"
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    device: str = "auto"
+    torch_dtype: str = "bfloat16"
     max_tokens: int = 4096
     temperature: float = 0.1
     korean_optimized: bool = True
-
+    low_cpu_mem_usage: bool = True
+    use_cache: bool = True
+    
     @classmethod
     def from_env(cls) -> "LocalModelConfig":
         return cls(
-            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-            model=os.getenv("EXAONE_MODEL", "exaone-deep:32b"),
-            embedding_model=os.getenv("LOCAL_EMBEDDING_MODEL",
-                                      "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"),
+            model=os.getenv("EXAONE_MODEL", "LGAI-EXAONE/EXAONE-4.0-32B"),
+            embedding_model=os.getenv("LOCAL_EMBEDDING_MODEL", 
+                                   "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"),
+            device=os.getenv("DEVICE", "auto"),
+            torch_dtype=os.getenv("TORCH_DTYPE", "bfloat16"),
             max_tokens=int(os.getenv("MAX_TOKENS", "4096")),
             temperature=float(os.getenv("TEMPERATURE", "0.1")),
             korean_optimized=os.getenv("KOREAN_OPTIMIZED", "true").lower() == "true",
+            low_cpu_mem_usage=os.getenv("LOW_CPU_MEM_USAGE", "true").lower() == "true",
+            use_cache=os.getenv("USE_CACHE", "true").lower() == "true",
         )
 
 
@@ -77,16 +88,16 @@ class VectorStoreConfig:
     path: str = "./data/vector_stores/chromadb"
     dimension: int = 1536
     collection_name: str = "rag_documents"
-
+    
     # ChromaDB specific
     chroma_host: str = "localhost"
     chroma_port: int = 8000
-
+    
     # Pinecone specific
     pinecone_api_key: Optional[str] = None
     pinecone_environment: Optional[str] = None
     pinecone_index_name: Optional[str] = None
-
+    
     @classmethod
     def from_env(cls) -> "VectorStoreConfig":
         return cls(
@@ -109,16 +120,16 @@ class ProcessingConfig:
     chunk_overlap: int = 200
     max_documents: int = 1000
     supported_extensions: list = None
-
+    
     def __post_init__(self):
         if self.supported_extensions is None:
             self.supported_extensions = [".pdf", ".docx", ".txt", ".md", ".html"]
-
+    
     @classmethod
     def from_env(cls) -> "ProcessingConfig":
         extensions_str = os.getenv("SUPPORTED_EXTENSIONS", ".pdf,.docx,.txt,.md,.html")
         extensions = [ext.strip() for ext in extensions_str.split(",")]
-
+        
         return cls(
             chunk_size=int(os.getenv("CHUNK_SIZE", "1000")),
             chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "200")),
@@ -134,7 +145,7 @@ class RetrievalConfig:
     similarity_threshold: float = 0.7
     rerank_top_k: int = 3
     search_type: str = "similarity"  # similarity, mmr, similarity_score_threshold
-
+    
     @classmethod
     def from_env(cls) -> "RetrievalConfig":
         return cls(
@@ -147,7 +158,7 @@ class RetrievalConfig:
 
 class APIConfigManager:
     """API 설정 관리자"""
-
+    
     def __init__(self):
         self.openai = OpenAIConfig.from_env()
         self.claude = ClaudeConfig.from_env()
@@ -155,7 +166,7 @@ class APIConfigManager:
         self.vector_store = VectorStoreConfig.from_env()
         self.processing = ProcessingConfig.from_env()
         self.retrieval = RetrievalConfig.from_env()
-
+    
     def get_provider_config(self, provider: str) -> Dict[str, Any]:
         """특정 제공자의 설정 반환"""
         configs = {
@@ -163,13 +174,13 @@ class APIConfigManager:
             "claude": self.claude,
             "local": self.local,
         }
-
+        
         config = configs.get(provider.lower())
         if not config:
             raise ValueError(f"Unsupported provider: {provider}")
-
+        
         return config.__dict__
-
+    
     def validate_config(self, provider: str) -> bool:
         """설정 유효성 검사"""
         if provider.lower() == "openai":
@@ -177,21 +188,26 @@ class APIConfigManager:
         elif provider.lower() == "claude":
             return bool(self.claude.api_key)
         elif provider.lower() == "local":
-            return bool(self.local.base_url)
-
+            # 로컬 모델은 GPU/CPU 사용 가능 여부 확인
+            try:
+                import torch
+                return torch.cuda.is_available() or True  # CPU라도 사용 가능
+            except ImportError:
+                return False
+        
         return False
-
+    
     def get_available_providers(self) -> list:
         """사용 가능한 제공자 목록 반환"""
         providers = []
-
+        
         if self.validate_config("openai"):
             providers.append("openai")
         if self.validate_config("claude"):
             providers.append("claude")
         if self.validate_config("local"):
             providers.append("local")
-
+        
         return providers
 
 

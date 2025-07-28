@@ -1,13 +1,14 @@
 """
-Local Model Provider (EXAONE via Ollama)
-EXAONE 4.0 모델을 Ollama를 통해 사용하는 제공자
+Local Model Provider (EXAONE via Hugging Face Transformers)
+EXAONE 4.0 모델을 Hugging Face Transformers를 통해 사용하는 제공자
 """
 
-import ollama
-import requests
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from typing import Dict, Any, List, Optional, Iterator
 from sentence_transformers import SentenceTransformer
 import logging
+import gc
 
 from .base_provider import BaseLLMProvider, EmbeddingProvider, LLMResponse, ChatMessage, parse_llm_response
 
@@ -15,33 +16,66 @@ logger = logging.getLogger(__name__)
 
 
 class LocalLLMProvider(BaseLLMProvider):
-    """로컬 LLM 제공자 (EXAONE via Ollama)"""
+    """로컬 LLM 제공자 (EXAONE via Hugging Face Transformers)"""
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        self.base_url = config.get("base_url", "http://localhost:11434")
-        self.client = ollama.Client(host=self.base_url)
+        self.model_name = config.get("model", "LGAI-EXAONE/EXAONE-4.0-32B")
+        self.device = config.get("device", "auto")
+        self.torch_dtype = config.get("torch_dtype", "bfloat16")
         self.korean_optimized = config.get("korean_optimized", True)
         
-        # 모델 존재 확인 및 다운로드
-        self._ensure_model_available()
+        # GPU 메모리 최적화 설정
+        self.low_cpu_mem_usage = config.get("low_cpu_mem_usage", True)
+        self.use_cache = config.get("use_cache", True)
+        
+        self.model = None
+        self.tokenizer = None
+        
+        # 모델 로드
+        self._load_model()
     
-    def _ensure_model_available(self):
-        """모델이 사용 가능한지 확인하고, 없으면 다운로드"""
+    def _load_model(self):
+        """EXAONE 모델 로드"""
         try:
-            # 사용 가능한 모델 목록 확인
-            models = self.client.list()
-            model_names = [model['name'] for model in models['models']]
+            logger.info(f"Loading EXAONE model: {self.model_name}")
             
-            if self.model_name not in model_names:
-                logger.info(f"Downloading model: {self.model_name}")
-                self.client.pull(self.model_name)
-                logger.info(f"Model {self.model_name} downloaded successfully")
-            else:
-                logger.info(f"Model {self.model_name} is already available")
+            # 특별한 transformers 버전 필요 (EXAONE 4.0 지원)
+            try:
+                # EXAONE 4.0 전용 transformers 설치 안내
+                import transformers
+                logger.info(f"Transformers version: {transformers.__version__}")
+            except ImportError:
+                logger.error("Please install transformers with EXAONE support:")
+                logger.error("pip install git+https://github.com/lgai-exaone/transformers@add-exaone4")
+                raise
+            
+            # 토크나이저 로드
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            logger.info("Tokenizer loaded successfully")
+            
+            # 모델 로드 (메모리 최적화)
+            torch_dtype = getattr(torch, self.torch_dtype) if isinstance(self.torch_dtype, str) else self.torch_dtype
+            
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_name,
+                torch_dtype=torch_dtype,
+                device_map=self.device,
+                low_cpu_mem_usage=self.low_cpu_mem_usage,
+                trust_remote_code=True
+            )
+            
+            logger.info(f"Model loaded successfully on device: {self.model.device}")
+            logger.info(f"Model dtype: {self.model.dtype}")
+            
+            # 메모리 사용량 출력
+            if torch.cuda.is_available():
+                memory_used = torch.cuda.memory_allocated() / 1024**3
+                logger.info(f"GPU memory used: {memory_used:.2f} GB")
                 
         except Exception as e:
-            logger.warning(f"Could not verify model availability: {e}")
+            logger.error(f"Failed to load EXAONE model: {e}")
+            raise
     
     def generate(
         self,
@@ -52,31 +86,53 @@ class LocalLLMProvider(BaseLLMProvider):
         """단일 프롬프트로 텍스트 생성"""
         
         try:
-            # EXAONE 모델의 특별한 포맷 적용
-            if "exaone" in self.model_name.lower():
-                prompt = self._format_exaone_prompt(prompt, system_prompt)
+            # 채팅 메시지 형태로 변환
+            messages = self._prepare_messages(prompt, system_prompt)
             
-            response = self.client.generate(
-                model=self.model_name,
-                prompt=prompt,
-                options={
-                    'temperature': kwargs.get('temperature', self.temperature),
-                    'num_predict': kwargs.get('max_tokens', self.max_tokens),
-                    'top_p': kwargs.get('top_p', 0.95),
-                    'repeat_penalty': kwargs.get('repeat_penalty', 1.0),  # EXAONE에서 중요
-                }
+            # 토크나이징
+            input_ids = self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=True,
+                add_generation_prompt=True,
+                return_tensors="pt"
             )
             
+            # 생성 파라미터 설정
+            generation_kwargs = {
+                "max_new_tokens": kwargs.get("max_tokens", self.max_tokens),
+                "temperature": kwargs.get("temperature", self.temperature),
+                "do_sample": kwargs.get("temperature", self.temperature) > 0,
+                "top_p": kwargs.get("top_p", 0.95),
+                "pad_token_id": self.tokenizer.eos_token_id,
+                "use_cache": self.use_cache,
+            }
+            
+            # EXAONE 모델 특화 설정
+            if "exaone" in self.model_name.lower():
+                generation_kwargs.update({
+                    "repetition_penalty": kwargs.get("repetition_penalty", 1.0),  # EXAONE에서 중요
+                    "length_penalty": kwargs.get("length_penalty", 1.0),
+                })
+            
+            # 텍스트 생성
+            with torch.no_grad():
+                output = self.model.generate(
+                    input_ids.to(self.model.device),
+                    **generation_kwargs
+                )
+            
+            # 입력 토큰 제거하고 출력만 디코딩
+            generated_tokens = output[0][len(input_ids[0]):]
+            response_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+            
             return LLMResponse(
-                content=response['response'],
+                content=response_text.strip(),
                 model=self.model_name,
                 metadata={
-                    'provider': 'local',
-                    'done': response.get('done', True),
-                    'total_duration': response.get('total_duration'),
-                    'load_duration': response.get('load_duration'),
-                    'prompt_eval_count': response.get('prompt_eval_count'),
-                    'eval_count': response.get('eval_count'),
+                    "provider": "local_transformers",
+                    "input_length": len(input_ids[0]),
+                    "output_length": len(generated_tokens),
+                    "total_tokens": len(output[0]),
                 }
             )
             
@@ -92,35 +148,50 @@ class LocalLLMProvider(BaseLLMProvider):
         """채팅 형태로 텍스트 생성"""
         
         try:
-            # ChatMessage를 Ollama 형태로 변환
-            ollama_messages = []
+            # ChatMessage를 Hugging Face 형태로 변환
+            hf_messages = []
             for msg in messages:
-                ollama_messages.append({
-                    'role': msg.role,
-                    'content': msg.content
+                hf_messages.append({
+                    "role": msg.role,
+                    "content": msg.content
                 })
             
-            response = self.client.chat(
-                model=self.model_name,
-                messages=ollama_messages,
-                options={
-                    'temperature': kwargs.get('temperature', self.temperature),
-                    'num_predict': kwargs.get('max_tokens', self.max_tokens),
-                    'top_p': kwargs.get('top_p', 0.95),
-                    'repeat_penalty': kwargs.get('repeat_penalty', 1.0),
-                }
+            # 토크나이징
+            input_ids = self.tokenizer.apply_chat_template(
+                hf_messages,
+                tokenize=True,
+                add_generation_prompt=True,
+                return_tensors="pt"
             )
             
+            # 생성 파라미터 설정
+            generation_kwargs = {
+                "max_new_tokens": kwargs.get("max_tokens", self.max_tokens),
+                "temperature": kwargs.get("temperature", self.temperature),
+                "do_sample": kwargs.get("temperature", self.temperature) > 0,
+                "top_p": kwargs.get("top_p", 0.95),
+                "pad_token_id": self.tokenizer.eos_token_id,
+                "use_cache": self.use_cache,
+            }
+            
+            # 텍스트 생성
+            with torch.no_grad():
+                output = self.model.generate(
+                    input_ids.to(self.model.device),
+                    **generation_kwargs
+                )
+            
+            # 응답 디코딩
+            generated_tokens = output[0][len(input_ids[0]):]
+            response_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+            
             return LLMResponse(
-                content=response['message']['content'],
+                content=response_text.strip(),
                 model=self.model_name,
                 metadata={
-                    'provider': 'local',
-                    'done': response.get('done', True),
-                    'total_duration': response.get('total_duration'),
-                    'load_duration': response.get('load_duration'),
-                    'prompt_eval_count': response.get('prompt_eval_count'),
-                    'eval_count': response.get('eval_count'),
+                    "provider": "local_transformers",
+                    "input_length": len(input_ids[0]),
+                    "output_length": len(generated_tokens),
                 }
             )
             
@@ -136,25 +207,17 @@ class LocalLLMProvider(BaseLLMProvider):
     ) -> Iterator[str]:
         """스트리밍으로 텍스트 생성"""
         
+        # Hugging Face Transformers의 스트리밍은 복잡하므로 기본 생성 후 청크로 반환
         try:
-            if "exaone" in self.model_name.lower():
-                prompt = self._format_exaone_prompt(prompt, system_prompt)
+            response = self.generate(prompt, system_prompt, **kwargs)
             
-            response = self.client.generate(
-                model=self.model_name,
-                prompt=prompt,
-                stream=True,
-                options={
-                    'temperature': kwargs.get('temperature', self.temperature),
-                    'num_predict': kwargs.get('max_tokens', self.max_tokens),
-                    'top_p': kwargs.get('top_p', 0.95),
-                    'repeat_penalty': kwargs.get('repeat_penalty', 1.0),
-                }
-            )
-            
-            for chunk in response:
-                if 'response' in chunk:
-                    yield chunk['response']
+            # 단어별로 스트리밍 시뮬레이션
+            words = response.content.split()
+            for i, word in enumerate(words):
+                if i == 0:
+                    yield word
+                else:
+                    yield " " + word
                     
         except Exception as e:
             logger.error(f"Error in streaming generation: {e}")
@@ -168,28 +231,15 @@ class LocalLLMProvider(BaseLLMProvider):
         """스트리밍으로 채팅"""
         
         try:
-            ollama_messages = []
-            for msg in messages:
-                ollama_messages.append({
-                    'role': msg.role,
-                    'content': msg.content
-                })
+            response = self.chat(messages, **kwargs)
             
-            response = self.client.chat(
-                model=self.model_name,
-                messages=ollama_messages,
-                stream=True,
-                options={
-                    'temperature': kwargs.get('temperature', self.temperature),
-                    'num_predict': kwargs.get('max_tokens', self.max_tokens),
-                    'top_p': kwargs.get('top_p', 0.95),
-                    'repeat_penalty': kwargs.get('repeat_penalty', 1.0),
-                }
-            )
-            
-            for chunk in response:
-                if 'message' in chunk and 'content' in chunk['message']:
-                    yield chunk['message']['content']
+            # 단어별로 스트리밍 시뮬레이션
+            words = response.content.split()
+            for i, word in enumerate(words):
+                if i == 0:
+                    yield word
+                else:
+                    yield " " + word
                     
         except Exception as e:
             logger.error(f"Error in streaming chat: {e}")
@@ -197,48 +247,53 @@ class LocalLLMProvider(BaseLLMProvider):
     
     def get_embedding(self, text: str) -> List[float]:
         """텍스트 임베딩 생성 (외부 모델 사용)"""
-        # Ollama는 현재 임베딩을 직접 지원하지 않으므로 
-        # SentenceTransformer 등을 사용
         raise NotImplementedError("Use LocalEmbeddingProvider for embeddings")
     
     def get_embeddings(self, texts: List[str]) -> List[List[float]]:
         """여러 텍스트의 임베딩 생성"""
         raise NotImplementedError("Use LocalEmbeddingProvider for embeddings")
     
-    def _format_exaone_prompt(self, prompt: str, system_prompt: Optional[str] = None) -> str:
-        """EXAONE 모델용 프롬프트 포맷팅"""
+    def _prepare_messages(self, prompt: str, system_prompt: Optional[str] = None) -> List[Dict[str, str]]:
+        """프롬프트를 메시지 형태로 변환"""
         
-        # EXAONE Deep 모델은 <thought> 태그를 사용하여 추론 과정을 표시
-        if "deep" in self.model_name.lower():
-            if system_prompt:
-                formatted = f"{system_prompt}\n\n<thought>\n이 질문에 대해 단계별로 생각해보겠습니다.\n</thought>\n\n{prompt}"
-            else:
-                formatted = f"<thought>\n{prompt}에 대해 단계별로 생각해보겠습니다.\n</thought>\n\n{prompt}"
-        else:
-            # 일반 EXAONE 모델
-            if system_prompt:
-                formatted = f"{system_prompt}\n\n{prompt}"
-            else:
-                formatted = prompt
+        messages = []
         
-        return formatted
+        # 시스템 프롬프트 추가
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        elif self.korean_optimized:
+            # 한국어 기본 시스템 프롬프트
+            messages.append({
+                "role": "system", 
+                "content": "당신은 도움이 되는 AI 어시스턴트입니다. 한국어로 정확하고 유용한 답변을 제공해주세요."
+            })
+        
+        # 사용자 프롬프트 추가
+        messages.append({"role": "user", "content": prompt})
+        
+        return messages
     
     def validate_config(self) -> bool:
         """설정 유효성 검사"""
         try:
-            # Ollama 서버 연결 확인
-            response = requests.get(f"{self.base_url}/api/tags", timeout=5)
-            return response.status_code == 200
+            return self.model is not None and self.tokenizer is not None
         except:
             return False
     
-    def get_available_models(self) -> List[str]:
-        """사용 가능한 모델 목록 반환"""
-        try:
-            models = self.client.list()
-            return [model['name'] for model in models['models']]
-        except:
-            return []
+    def cleanup(self):
+        """메모리 정리"""
+        if self.model is not None:
+            del self.model
+            self.model = None
+        if self.tokenizer is not None:
+            del self.tokenizer
+            self.tokenizer = None
+        
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
+        
+        logger.info("Model cleanup completed")
 
 
 class LocalEmbeddingProvider(EmbeddingProvider):
@@ -384,7 +439,7 @@ def get_exaone_usage_guide() -> str:
 
 if __name__ == "__main__":
     # 테스트 코드
-    from src.config.api_config import LocalModelConfig
+    from config.api_config import LocalModelConfig
     
     config = LocalModelConfig.from_env()
     
