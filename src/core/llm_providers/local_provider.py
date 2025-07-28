@@ -384,7 +384,7 @@ def get_exaone_usage_guide() -> str:
 
 if __name__ == "__main__":
     # 테스트 코드
-    from config.api_config import LocalModelConfig
+    from src.config.api_config import LocalModelConfig
     
     config = LocalModelConfig.from_env()
     
