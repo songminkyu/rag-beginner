@@ -2,8 +2,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 torch.cuda.empty_cache()
 
-#model_name = "LGAI-EXAONE/EXAONE-4.0-32B"
-model_name= "LGAI-EXAONE/EXAONE-4.0-1.2B"
+model_name = "LGAI-EXAONE/EXAONE-4.0-32B"
+#model_name= "LGAI-EXAONE/EXAONE-4.0-1.2B"
 
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
@@ -13,9 +13,9 @@ model = AutoModelForCausalLM.from_pretrained(
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 # choose your prompt
-prompt = "Explain how wonderful you are"
-prompt = "Explica lo increíble que eres"
-prompt = "너가 얼마나 대단한지 설명해 봐"
+#prompt = "Explain how wonderful you are"
+#prompt = "Explica lo increíble que eres"
+prompt = "너 김수미 배우 알아?"
 
 messages = [
     {"role": "user", "content": prompt}
