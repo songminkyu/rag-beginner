@@ -9,7 +9,7 @@ from datetime import datetime
 
 # LangChain imports (optional)
 try:
-    from langchain.chains import ConversationalRetrievalChain
+    from langchain.chains.conversational_retrieval.base import ConversationalRetrievalChain
     from langchain.memory import ConversationBufferMemory, ConversationSummaryBufferMemory
     from langchain.prompts import PromptTemplate
     from langchain.schema import BaseMessage, HumanMessage, AIMessage
