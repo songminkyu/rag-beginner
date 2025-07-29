@@ -9,13 +9,13 @@ from typing import Dict, Any, List, Optional, Iterator
 from sentence_transformers import SentenceTransformer
 import logging
 import gc
-
+import ollama
 from .base_provider import BaseLLMProvider, EmbeddingProvider, LLMResponse, ChatMessage, parse_llm_response
 
 logger = logging.getLogger(__name__)
 
 
-class LocalLLMProvider(BaseLLMProvider):
+class LocalProvider(BaseLLMProvider):
     """로컬 LLM 제공자 (EXAONE via Hugging Face Transformers)"""
     
     def __init__(self, config: Dict[str, Any]):
@@ -346,9 +346,9 @@ class LocalEmbeddingProvider(EmbeddingProvider):
         return self.dimension
 
 
-def create_local_provider(config: Dict[str, Any]) -> LocalLLMProvider:
+def create_local_provider(config: Dict[str, Any]) -> LocalProvider:
     """로컬 LLM 제공자 생성 헬퍼 함수"""
-    return LocalLLMProvider(config)
+    return LocalProvider(config)
 
 
 def create_local_embedding_provider(config: Dict[str, Any]) -> LocalEmbeddingProvider:
@@ -439,7 +439,7 @@ def get_exaone_usage_guide() -> str:
 
 if __name__ == "__main__":
     # 테스트 코드
-    from config.api_config import LocalModelConfig
+    from src.config.api_config import LocalModelConfig
     
     config = LocalModelConfig.from_env()
     
@@ -448,7 +448,7 @@ if __name__ == "__main__":
     
     if setup_success:
         # 로컬 제공자 테스트
-        provider = LocalLLMProvider(config.__dict__)
+        provider = LocalProvider(config.__dict__)
         
         # 간단한 테스트
         response = provider.generate("안녕하세요! 자기소개를 해주세요.")
