@@ -9,6 +9,20 @@ rag-beginner/
 ├── setup.py                           # 프로젝트 설정
 ├── .env.example                       # 환경변수 예시 파일
 ├── .gitignore                         # Git 제외 파일 설정
+├── docs/                              # 문서화
+│   ├── README.md                      # 프로젝트 경로 가이드
+│   ├── getting_started.md             # 시작 가이드
+│   ├── api_reference.md               # API 레퍼런스
+│   ├── best_practices.md              # 모범 사례
+│   ├── troubleshooting.md             # 문제 해결
+│   ├── performance_tuning.md          # 성능 튜닝
+│   └── contributing.md                # 기여 가이드		     # 문서화              
+│
+├── docker/                            # Docker 설정
+│   ├── Dockerfile                     # 메인 Docker 파일
+│   ├── docker-compose.yml             # Docker Compose 설정
+│   ├── requirements.docker.txt        # Docker용 requirements
+│   └── entrypoint.sh                  # Docker 진입점
 │
 └──src/
     ├── config/                            # 설정 파일들
@@ -214,20 +228,6 @@ rag-beginner/
     │   ├── prepare_data.py                # 데이터 준비
     │   ├── run_evaluation.py              # 평가 실행
     │   └── deploy.py                      # 배포 스크립트
-    │
-    ├── docs/                              # 문서화
-    │   ├── getting_started.md             # 시작 가이드
-    │   ├── api_reference.md               # API 레퍼런스
-    │   ├── best_practices.md              # 모범 사례
-    │   ├── troubleshooting.md             # 문제 해결
-    │   ├── performance_tuning.md          # 성능 튜닝
-    │   └── contributing.md                # 기여 가이드
-    │
-    ├── docker/                            # Docker 설정
-    │   ├── Dockerfile                     # 메인 Docker 파일
-    │   ├── docker-compose.yml             # Docker Compose 설정
-    │   ├── requirements.docker.txt        # Docker용 requirements
-    │   └── entrypoint.sh                  # Docker 진입점
     │
     └── examples/                          # 간단한 예제들
         ├── quick_start/                   # 빠른 시작 예제
