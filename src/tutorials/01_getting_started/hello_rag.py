@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 import logging
 import math
+from src.config.api_config import config_manager
 
 # 프로젝트 루트 경로 추가
 project_root = Path(__file__).parent.parent.parent
