@@ -24,6 +24,13 @@ rag-beginner/
 │   ├── requirements.docker.txt        # Docker용 requirements
 │   └── entrypoint.sh                  # Docker 진입점
 │
+├── scripts/                           # 유틸리티 스크립트
+│   ├── setup_ollama.sh                # Ollama 설정 스크립트
+│   ├── download_models.py             # 모델 다운로드
+│   ├── prepare_data.py                # 데이터 준비
+│   ├── run_evaluation.py              # 평가 실행
+│   └── deploy.py                      # 배포 스크립트
+│
 └──src/
     ├── config/                            # 설정 파일들
     │   ├── __init__.py
@@ -221,13 +228,6 @@ rag-beginner/
     │       ├── benchmark_retrieval.py     # 검색 성능 벤치마크
     │       ├── benchmark_generation.py    # 생성 성능 벤치마크
     │       └── load_testing.py            # 부하 테스트
-    │
-    ├── scripts/                           # 유틸리티 스크립트
-    │   ├── setup_ollama.sh                # Ollama 설정 스크립트
-    │   ├── download_models.py             # 모델 다운로드
-    │   ├── prepare_data.py                # 데이터 준비
-    │   ├── run_evaluation.py              # 평가 실행
-    │   └── deploy.py                      # 배포 스크립트
     │
     └── examples/                          # 간단한 예제들
         ├── quick_start/                   # 빠른 시작 예제

@@ -1,0 +1,210 @@
+version: '3.8'
+
+services:
+  # RAG API Server
+  rag-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: production
+    container_name: rag-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      - LOG_LEVEL=INFO
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+    env_file:
+      - ../.env
+    volumes:
+      - ../data:/app/data
+      - ../logs:/app/logs
+      - rag-models:/app/models
+    depends_on:
+      - chroma
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Gradio Demo Interface
+  rag-gradio:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: gradio
+    container_name: rag-gradio
+    restart: unless-stopped
+    ports:
+      - "7860:7860"
+    environment:
+      - PYTHONPATH=/app
+      - GRADIO_SERVER_NAME=0.0.0.0
+      - GRADIO_SERVER_PORT=7860
+    env_file:
+      - ../.env
+    volumes:
+      - ../data:/app/data
+      - rag-models:/app/models
+    depends_on:
+      - chroma
+      - rag-api
+    networks:
+      - rag-network
+
+  # Development Environment with Jupyter
+  rag-dev:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: jupyter
+    container_name: rag-dev
+    restart: unless-stopped
+    ports:
+      - "8888:8888"  # Jupyter Lab
+      - "8001:8000"  # Development API
+    environment:
+      - PYTHONPATH=/app
+      - JUPYTER_ENABLE_LAB=yes
+    env_file:
+      - ../.env
+    volumes:
+      - ../:/app
+      - rag-models:/app/models
+      - jupyter-data:/home/root/.jupyter
+    depends_on:
+      - chroma
+    networks:
+      - rag-network
+    profiles:
+      - dev
+
+  # ChromaDB Vector Database
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: rag-chroma
+    restart: unless-stopped
+    ports:
+      - "8888:8000"  # ChromaDB API port mapped to 8888 to avoid conflict
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+      - ALLOW_RESET=true
+    volumes:
+      - chroma-data:/chroma/chroma
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Ollama for Local Models (Optional)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - rag-network
+    profiles:
+      - local-models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Redis for Caching (Optional)
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - rag-network
+    profiles:
+      - caching
+
+  # Monitoring with Prometheus (Optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: rag-prometheus
+    restart: unless-stopped  
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - rag-network
+    profiles:
+      - monitoring
+
+  # Grafana for Dashboards (Optional)  
+  grafana:
+    image: grafana/grafana:latest
+    container_name: rag-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - rag-network
+    profiles:
+      - monitoring
+    depends_on:
+      - prometheus
+
+# Volumes for persistent data
+volumes:
+  chroma-data:
+    driver: local
+  ollama-data:
+    driver: local
+  redis-data:
+    driver: local
+  rag-models:
+    driver: local
+  jupyter-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+# Networks
+networks:
+  rag-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
