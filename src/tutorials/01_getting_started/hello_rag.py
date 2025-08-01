@@ -1,55 +1,113 @@
 """
-Hello RAG - 첫 번째 RAG 예제
-5분만에 RAG 시스템 구축하기
+Hello RAG - 첫 번째 RAG 시스템 구현
+간단한 RAG 시스템을 구현하여 기본 개념을 이해합니다.
 """
 
 import os
 import sys
 from pathlib import Path
+from typing import List, Dict, Any, Optional
+import logging
+import math
 
 # 프로젝트 루트 경로 추가
 project_root = Path(__file__).parent.parent.parent
-sys.path.append(str(project_root))
+sys.path.insert(0, str(project_root))
 
-from typing import List, Dict, Any
-import logging
-from config.api_config import config_manager
-from core.llm_providers.local_provider import LocalLLMProvider, LocalEmbeddingProvider
-from core.llm_providers.base_provider import ChatMessage
+# 환경 변수 로드
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    print("python-dotenv를 설치해주세요: pip install python-dotenv")
 
 # 로깅 설정
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
 class SimpleRAG:
-    """간단한 RAG 시스템"""
+    """간단한 RAG 시스템 구현"""
     
-    def __init__(self, provider_type: str = "local"):
-        self.provider_type = provider_type
-        self.documents = []
-        self.embeddings = []
+    def __init__(
+        self,
+        llm_provider_type: str = "openai",
+        chunk_size: int = 1000,
+        chunk_overlap: int = 200
+    ):
+        """SimpleRAG 초기화"""
+        
+        self.llm_provider_type = llm_provider_type
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.documents = []  # 간단한 인메모리 저장
+        
+        # 컴포넌트 초기화
+        self._initialize_components()
+    
+    def _initialize_components(self):
+        """RAG 시스템 컴포넌트 초기화"""
         
         # LLM 제공자 초기화
-        if provider_type == "local":
-            config = config_manager.local.__dict__
-            self.llm = LocalLLMProvider(config)
-            self.embedding_provider = LocalEmbeddingProvider(config)
-        elif provider_type == "openai":
-            from core.llm_providers.openai_provider import OpenAIProvider
-            config = config_manager.openai.__dict__
-            self.llm = OpenAIProvider(config)
-            self.embedding_provider = OpenAIProvider(config)
-        elif provider_type == "claude":
-            from core.llm_providers.claude_provider import ClaudeProvider
-            config = config_manager.claude.__dict__
-            self.llm = ClaudeProvider(config)
-            # Claude는 임베딩을 제공하지 않으므로 로컬 임베딩 사용
-            self.embedding_provider = LocalEmbeddingProvider(config_manager.local.__dict__)
-        else:
-            raise ValueError(f"Unsupported provider: {provider_type}")
+        self.llm_provider = self._create_llm_provider()
         
-        logger.info(f"Initialized SimpleRAG with {provider_type} provider")
+        logger.info("RAG 시스템 컴포넌트 초기화 완료")
+    
+    def _create_llm_provider(self):
+        """LLM 제공자 생성"""
+        
+        if self.llm_provider_type == "openai":
+            try:
+                from src.core.llm_providers.openai_provider import OpenAIProvider
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    raise ValueError("OPENAI_API_KEY 환경변수가 설정되지 않았습니다.")
+                
+                config = {
+                    "api_key": api_key,
+                    "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                    "temperature": 0.1,
+                    "max_tokens": 1000
+                }
+                return OpenAIProvider(config)
+            except ImportError:
+                logger.error("OpenAI 제공자를 로드할 수 없습니다.")
+                raise
+        
+        elif self.llm_provider_type == "claude":
+            try:
+                from src.core.llm_providers.claude_provider import ClaudeProvider
+                api_key = os.getenv("ANTHROPIC_API_KEY")
+                if not api_key:
+                    raise ValueError("ANTHROPIC_API_KEY 환경변수가 설정되지 않았습니다.")
+                
+                config = {
+                    "api_key": api_key,
+                    "model": os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022"),
+                    "temperature": 0.1,
+                    "max_tokens": 1000
+                }
+                return ClaudeProvider(config)
+            except ImportError:
+                logger.error("Claude 제공자를 로드할 수 없습니다.")
+                raise
+        
+        elif self.llm_provider_type == "local":
+            try:
+                from src.core.llm_providers.local_provider import LocalProvider
+                config = {
+                    "model": os.getenv("EXAONE_MODEL_NAME", "LGAI-EXAONE/EXAONE-4.0-7.8B"),
+                    "device": "auto",
+                    "torch_dtype": "bfloat16",
+                    "korean_optimized": True
+                }
+                return LocalProvider(config)
+            except ImportError:
+                logger.error("로컬 제공자를 로드할 수 없습니다.")
+                raise
+        
+        else:
+            raise ValueError(f"지원하지 않는 LLM 제공자: {self.llm_provider_type}")
     
     def add_documents(self, documents: List[str]):
         """문서들을 추가하고 임베딩 생성"""
