@@ -6,7 +6,6 @@ EXAONE 4.0 모델을 Hugging Face Transformers를 통해 사용하는 제공자
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from typing import Dict, Any, List, Optional, Iterator
-from sentence_transformers import SentenceTransformer
 import logging
 import gc
 import ollama
@@ -316,6 +315,8 @@ class LocalEmbeddingProvider(EmbeddingProvider):
             )
         
         try:
+            from sentence_transformers import SentenceTransformer
+
             self.model = SentenceTransformer(self.model_name)
             self.dimension = self.model.get_sentence_embedding_dimension()
             logger.info(f"Loaded embedding model: {self.model_name} (dim: {self.dimension})")

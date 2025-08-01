@@ -10,7 +10,6 @@ from typing import List, Dict, Any, Optional
 import logging
 import math
 from src.config.api_config import config_manager
-from src.core.llm_providers.local_provider import LocalProvider
 # 프로젝트 루트 경로 추가
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
@@ -59,7 +58,7 @@ class SimpleRAG:
         
         if self.llm_provider_type == "openai":
             try:
-                from src.core.llm_providers.openai_provider import OpenAIProvider
+                from src.core.llm_providers.openai_provider import OpenAIProvider, OpenAIEmbeddingProvider
                 api_key = os.getenv("OPENAI_API_KEY")
                 if not api_key:
                     raise ValueError("OPENAI_API_KEY 환경변수가 설정되지 않았습니다.")
@@ -68,8 +67,13 @@ class SimpleRAG:
                     "api_key": api_key,
                     "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                     "temperature": 0.1,
-                    "max_tokens": 1000
+                    "max_tokens": 1000,
+                    "embedding_model": os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
                 }
+                
+                # 임베딩 제공자도 생성
+                self.embedding_provider = OpenAIEmbeddingProvider(config)
+                
                 return OpenAIProvider(config)
             except ImportError:
                 logger.error("OpenAI 제공자를 로드할 수 없습니다.")
@@ -78,6 +82,7 @@ class SimpleRAG:
         elif self.llm_provider_type == "claude":
             try:
                 from src.core.llm_providers.claude_provider import ClaudeProvider
+                
                 api_key = os.getenv("ANTHROPIC_API_KEY")
                 if not api_key:
                     raise ValueError("ANTHROPIC_API_KEY 환경변수가 설정되지 않았습니다.")
@@ -88,6 +93,29 @@ class SimpleRAG:
                     "temperature": 0.1,
                     "max_tokens": 1000
                 }
+                
+                # Claude는 임베딩을 지원하지 않으므로 fallback 임베딩 사용
+                try:
+                    from src.core.llm_providers.local_provider import LocalEmbeddingProvider
+                    embedding_config = {
+                        "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                        "korean_optimized": True
+                    }
+                    self.embedding_provider = LocalEmbeddingProvider(embedding_config)
+                except Exception as emb_error:
+                    logger.warning(f"로컬 임베딩 제공자 로드 실패: {emb_error}")
+                    logger.info("기본 임베딩 제공자를 사용합니다")
+                    
+                    # 간단한 임베딩 제공자 fallback
+                    class SimpleEmbeddingProvider:
+                        def embed_text(self, text):
+                            return [0.0] * 384  # 기본 차원
+                        
+                        def embed_texts(self, texts):
+                            return [[0.0] * 384 for _ in texts]
+                    
+                    self.embedding_provider = SimpleEmbeddingProvider()
+                
                 return ClaudeProvider(config)
             except ImportError:
                 logger.error("Claude 제공자를 로드할 수 없습니다.")
@@ -95,54 +123,183 @@ class SimpleRAG:
         
         elif self.llm_provider_type == "local":
             try:
-                config = {
-                    "model": os.getenv("EXAONE_MODEL_NAME", "LGAI-EXAONE/EXAONE-4.0-1.2B"),
-                    "device": "auto",
-                    "torch_dtype": "bfloat16",
-                    "korean_optimized": True
-                }
-                return LocalProvider(config)
-            except ImportError:
-                logger.error("로컬 제공자를 로드할 수 없습니다.")
-                raise
+                # Try to import local providers with dependency check
+                import torch
+                logger.info("PyTorch found, attempting to load local providers...")
+                import pyarrow
+                
+                # Check for sentence-transformers compatibility
+                try:
+                    from src.core.llm_providers.local_provider import LocalProvider, LocalEmbeddingProvider
+                    
+                    config = {
+                        "model": os.getenv("EXAONE_MODEL_NAME", "LGAI-EXAONE/EXAONE-4.0-1.2B"),
+                        "device": "auto",  
+                        "torch_dtype": "bfloat16",
+                        "korean_optimized": True
+                    }
+                    
+                    # 로컬 임베딩 제공자 생성
+                    embedding_config = {
+                        "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                        "korean_optimized": True
+                    }
+                    self.embedding_provider = LocalEmbeddingProvider(embedding_config)
+                    
+                    return LocalProvider(config)
+                    
+                except Exception as st_error:
+                    logger.warning(f"SentenceTransformers 호환성 문제: {st_error}")
+                    logger.info("기본 로컬 제공자를 사용합니다 (임베딩 없음)")
+                    
+                    # 완전히 독립적인 fallback 클래스들 - 임포트 없이 구현
+                    from dataclasses import dataclass
+                    from typing import Dict, Any, Optional
+                    
+                    @dataclass
+                    class LLMResponse:
+                        content: str
+                        model: str
+                        metadata: Dict[str, Any]
+                    
+                    class SimpleLocalProvider:
+                        def __init__(self, config):
+                            self.config = config
+                            self.temperature = config.get("temperature", 0.1)
+                            self.max_tokens = config.get("max_tokens", 1000)
+                            
+                        def generate(self, prompt, system_prompt=None, **kwargs):
+                            return LLMResponse(
+                                content="로컬 모델이 사용할 수 없습니다. OpenAI 또는 Claude API를 사용해주세요.",
+                                model="local_fallback",
+                                metadata={"provider": "fallback"}
+                            )
+                    
+                    # 간단한 임베딩 제공자 fallback
+                    class SimpleEmbeddingProvider:
+                        def embed_text(self, text):
+                            return [0.0] * 384  # 기본 차원
+                        
+                        def embed_texts(self, texts):
+                            return [[0.0] * 384 for _ in texts]
+                    
+                    config = {"korean_optimized": True}
+                    self.embedding_provider = SimpleEmbeddingProvider()
+                    
+                    return SimpleLocalProvider(config)
+                    
+            except ImportError as torch_error:
+                logger.error(f"PyTorch를 찾을 수 없습니다: {torch_error}")
+                logger.error("로컬 제공자를 사용하려면 PyTorch를 설치해주세요: pip install torch")
+                raise ValueError("로컬 제공자 사용을 위해 PyTorch가 필요합니다.")
+            except Exception as e:
+                logger.error(f"로컬 제공자 초기화 실패: {e}")
+                raise ValueError(f"로컬 제공자를 로드할 수 없습니다: {e}")
         
         else:
             raise ValueError(f"지원하지 않는 LLM 제공자: {self.llm_provider_type}")
     
-    def add_documents(self, documents: List[str]):
-        """문서들을 추가하고 임베딩 생성"""
-        logger.info(f"Adding {len(documents)} documents...")
+    def add_documents(self, documents: List[str], metadata_list: Optional[List[Dict]] = None):
+        """문서들을 시스템에 추가"""
         
-        self.documents.extend(documents)
+        logger.info(f"{len(documents)}개 문서를 처리 중...")
         
-        # 임베딩 생성
-        new_embeddings = self.embedding_provider.embed_texts(documents)
-        self.embeddings.extend(new_embeddings)
+        for i, doc in enumerate(documents):
+            # 문서를 청크로 분할
+            chunks = self._simple_text_splitter(doc)
+            
+            # 메타데이터 준비
+            doc_metadata = metadata_list[i] if metadata_list and i < len(metadata_list) else {}
+            
+            for j, chunk in enumerate(chunks):
+                chunk_data = {
+                    "content": chunk,
+                    "metadata": {
+                        "document_id": i,
+                        "chunk_id": j,
+                        "source": doc_metadata.get("source", f"document_{i}"),
+                        **doc_metadata
+                    }
+                }
+                self.documents.append(chunk_data)
         
-        logger.info(f"Total documents: {len(self.documents)}")
+        logger.info(f"총 {len(self.documents)}개 청크가 추가됨")
     
-    def similarity_search(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
-        """유사도 검색으로 관련 문서 찾기"""
+    def _simple_text_splitter(self, text: str) -> List[str]:
+        """간단한 텍스트 분할기"""
+        
+        # 간단한 분할: 텍스트가 청크 크기보다 작으면 그대로 반환
+        if len(text) <= self.chunk_size:
+            return [text]
+        
+        # 텍스트를 청크로 분할
+        chunks = []
+        start = 0
+        
+        while start < len(text):
+            # 청크 끝 위치 계산
+            end = start + self.chunk_size
+            
+            # 마지막 청크가 아니라면 적절한 분할점 찾기
+            if end < len(text):
+                # 공백이나 문장 부호에서 분할하려고 시도
+                for i in range(end, start + self.chunk_size - self.chunk_overlap, -1):
+                    if text[i] in ' \n\t.!?':
+                        end = i + 1
+                        break
+            
+            # 청크 추출
+            chunk = text[start:end].strip()
+            if chunk:  # 빈 청크는 추가하지 않음
+                chunks.append(chunk)
+            
+            # 다음 시작점 계산 (오버랩 적용)
+            start = end - self.chunk_overlap
+            
+            # 무한 루프 방지
+            if start >= len(text):
+                break
+        
+        return chunks
+    
+    def retrieve(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
+        """쿼리와 관련된 문서들을 검색"""
+        
         if not self.documents:
             return []
         
-        # 쿼리 임베딩 생성
-        query_embedding = self.embedding_provider.embed_text(query)
-        
-        # 코사인 유사도 계산
-        similarities = []
-        for i, doc_embedding in enumerate(self.embeddings):
-            similarity = self._cosine_similarity(query_embedding, doc_embedding)
-            similarities.append({
-                'index': i,
-                'document': self.documents[i],
-                'similarity': similarity
+        # 유사도 계산 (간단한 키워드 기반 또는 임베딩 기반)
+        scored_docs = []
+        for doc in self.documents:
+            score = self._simple_similarity(query, doc["content"])
+            scored_docs.append({
+                "content": doc["content"],
+                "metadata": doc["metadata"],
+                "similarity_score": score
             })
         
-        # 유사도 기준으로 정렬
-        similarities.sort(key=lambda x: x['similarity'], reverse=True)
+        # 유사도 순으로 정렬
+        scored_docs.sort(key=lambda x: x["similarity_score"], reverse=True)
         
-        return similarities[:top_k]
+        # 상위 k개 반환
+        top_docs = scored_docs[:k]
+        
+        logger.info(f"검색 완료: {len(top_docs)}개 문서 검색됨")
+        return top_docs
+    
+    def _simple_similarity(self, query: str, text: str) -> float:
+        """간단한 유사도 계산 (키워드 기반)"""
+        
+        query_words = set(query.lower().split())
+        text_words = set(text.lower().split())
+        
+        if not query_words or not text_words:
+            return 0.0
+        
+        intersection = query_words.intersection(text_words)
+        union = query_words.union(text_words)
+        
+        return len(intersection) / len(union) if union else 0.0
     
     def _cosine_similarity(self, a: List[float], b: List[float]) -> float:
         """코사인 유사도 계산"""
@@ -157,37 +314,85 @@ class SimpleRAG:
         
         return dot_product / (magnitude_a * magnitude_b)
     
-    def query(self, question: str, top_k: int = 3) -> Dict[str, Any]:
-        """RAG 쿼리 실행"""
-        logger.info(f"Processing query: {question}")
-        
-        # 관련 문서 검색
-        relevant_docs = self.similarity_search(question, top_k)
-        
-        if not relevant_docs:
-            return {
-                'question': question,
-                'answer': '관련 문서를 찾을 수 없습니다.',
-                'sources': [],
-                'context': ''
-            }
-        
-        # 컨텍스트 구성
-        context = "\n\n".join([doc['document'] for doc in relevant_docs])
+    def generate_answer(self, query: str, context: str) -> str:
+        """컨텍스트를 바탕으로 답변 생성"""
         
         # RAG 프롬프트 생성
-        rag_prompt = self.llm.format_rag_prompt(question, context)
+        if hasattr(self.llm_provider, 'format_rag_prompt'):
+            prompt = self.llm_provider.format_rag_prompt(query=query, context=context)
+        else:
+            # 기본 프롬프트 템플릿
+            prompt = f"""다음 컨텍스트 정보를 바탕으로 질문에 답변해주세요.
+                    컨텍스트:
+                    {context}
+                    
+                    질문: {query}
+                    
+                    답변:"""
         
-        # LLM으로 답변 생성
-        response = self.llm.generate(rag_prompt)
+        # 답변 생성
+        response = self.llm_provider.generate(prompt)
+        return response.content
+    
+    def query(self, question: str, k: int = 5) -> Dict[str, Any]:
+        """RAG 질의응답 실행"""
         
-        return {
-            'question': question,
-            'answer': response.content,
-            'sources': [doc['document'][:100] + '...' for doc in relevant_docs],
-            'context': context,
-            'similarities': [doc['similarity'] for doc in relevant_docs]
+        logger.info(f"질문: {question}")
+        
+        # 1. 관련 문서 검색
+        retrieved_docs = self.retrieve(question, k=k)
+        
+        if not retrieved_docs:
+            return {
+                "question": question,
+                "answer": "관련된 정보를 찾을 수 없습니다.",
+                "sources": [],
+                "context": ""
+            }
+        
+        # 2. 컨텍스트 구성
+        context_parts = []
+        sources = []
+        
+        for doc in retrieved_docs:
+            if doc["similarity_score"] > 0:  # 유사도가 0보다 큰 것만
+                context_parts.append(doc["content"])
+                
+                # 소스 정보 추가
+                source_info = {
+                    "content": doc["content"][:200] + "..." if len(doc["content"]) > 200 else doc["content"],
+                    "metadata": doc["metadata"],
+                    "similarity_score": doc["similarity_score"]
+                }
+                sources.append(source_info)
+        
+        if not context_parts:
+            return {
+                "question": question,
+                "answer": "관련된 정보를 찾을 수 없습니다.",
+                "sources": [],
+                "context": ""
+            }
+        
+        context = "\n\n".join(context_parts)
+        
+        # 3. 답변 생성
+        try:
+            answer = self.generate_answer(question, context)
+        except Exception as e:
+            logger.error(f"답변 생성 오류: {e}")
+            answer = f"답변 생성 중 오류가 발생했습니다: {e}"
+        
+        result = {
+            "question": question,
+            "answer": answer,
+            "sources": sources,
+            "context": context,
+            "retrieved_count": len(sources)
         }
+        
+        logger.info(f"답변 생성 완료")
+        return result
 
 
 def demo_korean_rag():
@@ -233,7 +438,8 @@ def demo_korean_rag():
         result = rag.query(question)
         
         print(f"💡 답변: {result['answer']}")
-        print(f"📊 유사도: {[f'{sim:.3f}' for sim in result['similarities']]}")
+        similarities = [source['similarity_score'] for source in result['sources']]
+        print(f"📊 유사도: {[f'{sim:.3f}' for sim in similarities]}")
         print(f"📚 참고 문서: {len(result['sources'])}개")
 
 
@@ -277,7 +483,8 @@ def demo_english_rag():
         result = rag.query(question)
         
         print(f"💡 Answer: {result['answer']}")
-        print(f"📊 Similarities: {[f'{sim:.3f}' for sim in result['similarities']]}")
+        similarities = [source['similarity_score'] for source in result['sources']]
+        print(f"📊 Similarities: {[f'{sim:.3f}' for sim in similarities]}")
         print(f"📚 Sources: {len(result['sources'])} documents")
 
 
@@ -336,7 +543,8 @@ def interactive_rag():
                 print("\n📚 참고 문서:")
                 for i, source in enumerate(result['sources'], 1):
                     print(f"  {i}. {source}")
-                print(f"\n📊 유사도 점수: {[f'{sim:.3f}' for sim in result['similarities']]}")
+                similarities = [source['similarity_score'] for source in result['sources']]
+                print(f"\n📊 유사도 점수: {[f'{sim:.3f}' for sim in similarities]}")
         
         except KeyboardInterrupt:
             print("\n👋 RAG 시스템을 종료합니다.")
@@ -362,10 +570,10 @@ def main():
     try:
         # 데모 실행
         demo_korean_rag()
-        demo_english_rag()
+        # demo_english_rag()
         
         # 대화형 RAG
-        interactive_rag()
+        # interactive_rag()
         
     except Exception as e:
         logger.error(f"Demo 실행 중 오류: {e}")
