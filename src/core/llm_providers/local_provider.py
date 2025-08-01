@@ -17,10 +17,10 @@ logger = logging.getLogger(__name__)
 
 class LocalProvider(BaseLLMProvider):
     """로컬 LLM 제공자 (EXAONE via Hugging Face Transformers)"""
-    
+
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        self.model_name = config.get("model", "LGAI-EXAONE/EXAONE-4.0-32B")
+        self.model_name = config.get("model", "LGAI-EXAONE/EXAONE-4.0-1.2B")
         self.device = config.get("device", "auto")
         self.torch_dtype = config.get("torch_dtype", "bfloat16")
         self.korean_optimized = config.get("korean_optimized", True)

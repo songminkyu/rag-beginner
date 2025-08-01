@@ -55,7 +55,7 @@ class ClaudeConfig:
 @dataclass
 class LocalModelConfig:
     """로컬 모델 (EXAONE via Hugging Face Transformers) 설정"""
-    model: str = "LGAI-EXAONE/EXAONE-4.0-32B"
+    model: str = "LGAI-EXAONE/EXAONE-4.0-1.2B"
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     device: str = "auto"
     torch_dtype: str = "bfloat16"
@@ -68,7 +68,7 @@ class LocalModelConfig:
     @classmethod
     def from_env(cls) -> "LocalModelConfig":
         return cls(
-            model=os.getenv("EXAONE_MODEL", "LGAI-EXAONE/EXAONE-4.0-32B"),
+            model=os.getenv("EXAONE_MODEL", "LGAI-EXAONE/EXAONE-4.0-1.2B"),
             embedding_model=os.getenv("LOCAL_EMBEDDING_MODEL", 
                                    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"),
             device=os.getenv("DEVICE", "auto"),

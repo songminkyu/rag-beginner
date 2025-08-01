@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional
 import logging
 import math
 from src.config.api_config import config_manager
-
+from src.core.llm_providers.local_provider import LocalProvider
 # 프로젝트 루트 경로 추가
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
@@ -95,9 +95,8 @@ class SimpleRAG:
         
         elif self.llm_provider_type == "local":
             try:
-                from src.core.llm_providers.local_provider import LocalProvider
                 config = {
-                    "model": os.getenv("EXAONE_MODEL_NAME", "LGAI-EXAONE/EXAONE-4.0-7.8B"),
+                    "model": os.getenv("EXAONE_MODEL_NAME", "LGAI-EXAONE/EXAONE-4.0-1.2B"),
                     "device": "auto",
                     "torch_dtype": "bfloat16",
                     "korean_optimized": True
