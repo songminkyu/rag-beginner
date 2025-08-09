@@ -84,4 +84,5 @@ dependencies = [
     "huggingface-hub[hf-xet]>=0.34.1",
     "transformers>=4.54.0",
     "pyarrow==20.0.0",
+    "docling>=2.43.0",
 ]
