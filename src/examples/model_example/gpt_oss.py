@@ -1,8 +1,7 @@
 from transformers import pipeline
 import torch
 
-# model_id = "openai/gpt-oss-120b"
-# model_id = "openai/gpt-oss-20b"
+model_id = "openai/gpt-oss-20b"
 
 pipe = pipeline(
     "text-generation",
