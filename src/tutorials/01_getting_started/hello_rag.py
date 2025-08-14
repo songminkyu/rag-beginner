@@ -96,10 +96,10 @@ class SimpleRAG:
                 
                 # Claude는 임베딩을 지원하지 않으므로 fallback 임베딩 사용
                 try:
-                    from src.core.llm_providers.local_provider import LocalEmbeddingProvider
+                    from src.core.llm_providers.flexible_local_provider import LocalEmbeddingProvider
                     embedding_config = {
-                        "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-                        "korean_optimized": True
+                        "embedding_model": os.getenv("EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"),
+                        "korean_optimized": os.getenv("KOREAN_OPTIMIZED", "true").lower() == "true"
                     }
                     self.embedding_provider = LocalEmbeddingProvider(embedding_config)
                 except Exception as emb_error:
@@ -133,16 +133,24 @@ class SimpleRAG:
                     from src.core.llm_providers.flexible_local_provider import FlexibleLocalProvider, LocalEmbeddingProvider
                     
                     config = {
-                        "model": os.getenv("EXAONE_MODEL_NAME", "LGAI-EXAONE/EXAONE-4.0-1.2B"),
-                        "device": "auto",  
-                        "torch_dtype": "bfloat16",
-                        "korean_optimized": True
+                        "model": os.getenv("LOCAL_MODEL_NAME", "LGAI-EXAONE/EXAONE-4.0-1.2B"),
+                        "model_type": os.getenv("LOCAL_MODEL_TYPE", "auto"),
+                        "model_size": os.getenv("LOCAL_MODEL_SIZE", "medium"),
+                        "hf_model": os.getenv("HF_MODEL_NAME", "microsoft/DialoGPT-medium"),
+                        "ollama_base_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+                        "device": os.getenv("DEVICE", "auto"),
+                        "torch_dtype": os.getenv("TORCH_DTYPE", "float16"),
+                        "max_tokens": int(os.getenv("MAX_TOKENS", "4096")),
+                        "max_new_tokens": int(os.getenv("MAX_NEW_TOKENS", "1024")),
+                        "korean_optimized": os.getenv("KOREAN_OPTIMIZED", "true").lower() == "true",
+                        "low_cpu_mem_usage": os.getenv("LOW_CPU_MEM_USAGE", "true").lower() == "true",
+                        "use_cache": os.getenv("USE_CACHE", "true").lower() == "true"
                     }
                     
                     # 로컬 임베딩 제공자 생성
                     embedding_config = {
-                        "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-                        "korean_optimized": True
+                        "embedding_model": os.getenv("EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"),
+                        "korean_optimized": os.getenv("KOREAN_OPTIMIZED", "true").lower() == "true"
                     }
                     self.embedding_provider = LocalEmbeddingProvider(embedding_config)
                     
@@ -183,7 +191,11 @@ class SimpleRAG:
                         def embed_texts(self, texts):
                             return [[0.0] * 384 for _ in texts]
                     
-                    config = {"korean_optimized": True}
+                    config = {
+                        "korean_optimized": os.getenv("KOREAN_OPTIMIZED", "true").lower() == "true",
+                        "max_tokens": int(os.getenv("MAX_TOKENS", "4096")),
+                        "max_new_tokens": int(os.getenv("MAX_NEW_TOKENS", "1024"))
+                    }
                     self.embedding_provider = SimpleEmbeddingProvider()
                     
                     return SimpleLocalProvider(config)
