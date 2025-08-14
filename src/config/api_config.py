@@ -54,30 +54,46 @@ class ClaudeConfig:
 
 @dataclass
 class LocalModelConfig:
-    """로컬 모델 (EXAONE via Hugging Face Transformers) 설정"""
-    model: str = "LGAI-EXAONE/EXAONE-4.0-1.2B"
+    """로컬 모델 설정 (다양한 모델 지원)"""
+    model: str = "microsoft/DialoGPT-medium"
+    model_type: str = "auto"  # auto, exaone, llama, mistral, codellama, phi, qwen
+    model_size: str = "medium"
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     device: str = "auto"
-    torch_dtype: str = "bfloat16"
+    torch_dtype: str = "float16"
     max_tokens: int = 4096
+    max_new_tokens: int = 1024
     temperature: float = 0.1
     korean_optimized: bool = True
     low_cpu_mem_usage: bool = True
     use_cache: bool = True
+    # Ollama configuration
+    ollama_base_url: str = "http://localhost:11434"
+    # HuggingFace configuration
+    hf_model: str = "microsoft/DialoGPT-medium"
     
     @classmethod
     def from_env(cls) -> "LocalModelConfig":
+        # Get model configuration from environment
+        local_model = os.getenv("LOCAL_MODEL_NAME", "microsoft/DialoGPT-medium")
+        hf_model = os.getenv("HF_MODEL_NAME", "microsoft/DialoGPT-medium")
+        
         return cls(
-            model=os.getenv("EXAONE_MODEL", "LGAI-EXAONE/EXAONE-4.0-1.2B"),
-            embedding_model=os.getenv("LOCAL_EMBEDDING_MODEL", 
+            model=local_model,
+            model_type=os.getenv("LOCAL_MODEL_TYPE", "auto"),
+            model_size=os.getenv("LOCAL_MODEL_SIZE", "medium"),
+            embedding_model=os.getenv("EMBEDDING_MODEL", 
                                    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"),
             device=os.getenv("DEVICE", "auto"),
-            torch_dtype=os.getenv("TORCH_DTYPE", "bfloat16"),
+            torch_dtype=os.getenv("TORCH_DTYPE", "float16"),
             max_tokens=int(os.getenv("MAX_TOKENS", "4096")),
+            max_new_tokens=int(os.getenv("MAX_NEW_TOKENS", "1024")),
             temperature=float(os.getenv("TEMPERATURE", "0.1")),
             korean_optimized=os.getenv("KOREAN_OPTIMIZED", "true").lower() == "true",
             low_cpu_mem_usage=os.getenv("LOW_CPU_MEM_USAGE", "true").lower() == "true",
             use_cache=os.getenv("USE_CACHE", "true").lower() == "true",
+            ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+            hf_model=hf_model,
         )
 
 
@@ -188,14 +204,34 @@ class APIConfigManager:
         elif provider.lower() == "claude":
             return bool(self.claude.api_key)
         elif provider.lower() == "local":
-            # 로컬 모델은 GPU/CPU 사용 가능 여부 확인
+            # 로컬 모델은 PyTorch/Transformers 사용 가능 여부 확인
             try:
                 import torch
-                return torch.cuda.is_available() or True  # CPU라도 사용 가능
+                # 추가: Ollama 또는 HuggingFace 모델 중 하나라도 사용 가능한지 확인
+                has_ollama = self._check_ollama_availability()
+                has_hf = self._check_hf_availability()
+                return torch.cuda.is_available() or has_ollama or has_hf or True  # CPU라도 사용 가능
             except ImportError:
                 return False
         
         return False
+    
+    def _check_ollama_availability(self) -> bool:
+        """Ollama 서버 사용 가능성 확인"""
+        try:
+            import requests
+            response = requests.get(f"{self.local.ollama_base_url}/api/tags", timeout=2)
+            return response.status_code == 200
+        except:
+            return False
+    
+    def _check_hf_availability(self) -> bool:
+        """HuggingFace Transformers 사용 가능성 확인"""
+        try:
+            from transformers import AutoTokenizer
+            return True
+        except ImportError:
+            return False
     
     def get_available_providers(self) -> list:
         """사용 가능한 제공자 목록 반환"""
@@ -209,6 +245,19 @@ class APIConfigManager:
             providers.append("local")
         
         return providers
+    
+    def get_local_model_info(self) -> Dict[str, Any]:
+        """로컬 모델 정보 반환"""
+        return {
+            "model": self.local.model,
+            "model_type": self.local.model_type,
+            "model_size": self.local.model_size,
+            "korean_optimized": self.local.korean_optimized,
+            "ollama_available": self._check_ollama_availability(),
+            "hf_available": self._check_hf_availability(),
+            "device": self.local.device,
+            "torch_dtype": self.local.torch_dtype,
+        }
 
 
 # 전역 설정 인스턴스
@@ -223,6 +272,7 @@ def get_config_summary() -> Dict[str, Any]:
         "chunk_size": config_manager.processing.chunk_size,
         "retrieval_top_k": config_manager.retrieval.top_k,
         "supported_extensions": config_manager.processing.supported_extensions,
+        "local_model_info": config_manager.get_local_model_info(),
     }
 
 

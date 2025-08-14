@@ -130,7 +130,7 @@ class SimpleRAG:
                 
                 # Check for sentence-transformers compatibility
                 try:
-                    from src.core.llm_providers.local_provider import LocalProvider, LocalEmbeddingProvider
+                    from src.core.llm_providers.flexible_local_provider import FlexibleLocalProvider, LocalEmbeddingProvider
                     
                     config = {
                         "model": os.getenv("EXAONE_MODEL_NAME", "LGAI-EXAONE/EXAONE-4.0-1.2B"),
@@ -146,7 +146,7 @@ class SimpleRAG:
                     }
                     self.embedding_provider = LocalEmbeddingProvider(embedding_config)
                     
-                    return LocalProvider(config)
+                    return FlexibleLocalProvider(config)
                     
                 except Exception as st_error:
                     logger.warning(f"SentenceTransformers 호환성 문제: {st_error}")
@@ -411,9 +411,11 @@ def demo_korean_rag():
         "빅데이터는 기존 데이터베이스 관리도구로 데이터를 수집, 저장, 관리, 분석할 수 있는 역량을 넘어서는 대량의 정형 또는 비정형 데이터를 말한다."
     ]
     
-    # SimpleRAG 초기화 (로컬 EXAONE 모델 사용)
+    # SimpleRAG 초기화 (유연한 로컬 모델 사용)
     try:
         rag = SimpleRAG("local")
+        model_info = config_manager.get_local_model_info()
+        print(f"✅ 로컬 모델을 사용합니다: {model_info.get('model', 'unknown')}")
     except Exception as e:
         print(f"로컬 모델 초기화 실패: {e}")
         print("OpenAI API를 사용합니다...")
@@ -461,8 +463,12 @@ def demo_english_rag():
     # SimpleRAG 초기화
     try:
         rag = SimpleRAG("local")
-    except:
+        model_info = config_manager.get_local_model_info()
+        print(f"✅ 로컬 모델을 사용합니다: {model_info.get('model', 'unknown')}")
+    except Exception as e:
+        print(f"로컬 모델 실패: {e}")
         rag = SimpleRAG("openai")
+        print("✅ OpenAI GPT 모델을 사용합니다.")
     
     # 문서 추가
     rag.add_documents(english_documents)
@@ -506,16 +512,29 @@ def interactive_rag():
     ]
     
     # RAG 시스템 초기화
-    try:
-        rag = SimpleRAG("local")
-        print("✅ 로컬 EXAONE 모델을 사용합니다.")
-    except:
-        try:
-            rag = SimpleRAG("openai")
-            print("✅ OpenAI GPT 모델을 사용합니다.")
-        except:
-            rag = SimpleRAG("claude")
-            print("✅ Claude 모델을 사용합니다.")
+    available_providers = config_manager.get_available_providers()
+    print(f"사용 가능한 제공자: {available_providers}")
+    
+    rag = None
+    for provider in ["local", "openai", "claude"]:
+        if provider in available_providers:
+            try:
+                rag = SimpleRAG(provider)
+                if provider == "local":
+                    model_info = config_manager.get_local_model_info()
+                    print(f"✅ 로컬 모델을 사용합니다: {model_info.get('model', 'unknown')}")
+                elif provider == "openai":
+                    print("✅ OpenAI GPT 모델을 사용합니다.")
+                else:
+                    print("✅ Claude 모델을 사용합니다.")
+                break
+            except Exception as e:
+                print(f"{provider} 제공자 실패: {e}")
+                continue
+    
+    if not rag:
+        print("❌ 사용 가능한 제공자가 없습니다.")
+        return
     
     rag.add_documents(documents)
     print(f"📚 {len(documents)}개의 문서가 로드되었습니다.")
