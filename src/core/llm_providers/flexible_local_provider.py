@@ -311,6 +311,8 @@ class FlexibleLocalProvider(BaseLLMProvider):
             return "phi"
         elif "qwen" in model_name:
             return "qwen"
+        elif "gpt" in model_name:
+            return "gpt"
         else:
             return "generic"
     
