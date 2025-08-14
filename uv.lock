@@ -2430,6 +2430,20 @@ wheels = [
 ]
 
 [[package]]
+name = "langchain-chroma"
+version = "0.2.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "chromadb" },
+    { name = "langchain-core" },
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3d/37/e841c916db260732ffef3d7e51ceca826aeac26b18615984b4e6381cd07c/langchain_chroma-0.2.5.tar.gz", hash = "sha256:b63e9df8c3fbb316313c232214b7bc8b696a505039a6f7adf29b992a74cc4b2e", size = 17202, upload-time = "2025-07-22T19:26:51.546Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3d/f9/705820c4792540383d4cf9c96fc55784fbd972897f5e84e3160001aba51d/langchain_chroma-0.2.5-py3-none-any.whl", hash = "sha256:dcb80330cd8ac9a87695a5ba237a15affeb805751bdb42dee213b12e0d379825", size = 12453, upload-time = "2025-07-22T19:26:50.57Z" },
+]
+
+[[package]]
 name = "langchain-community"
 version = "0.3.27"
 source = { registry = "https://pypi.org/simple" }
@@ -5003,6 +5017,7 @@ dependencies = [
     { name = "jupyter" },
     { name = "langchain" },
     { name = "langchain-anthropic" },
+    { name = "langchain-chroma" },
     { name = "langchain-community" },
     { name = "langchain-core" },
     { name = "langchain-experimental" },
@@ -5072,6 +5087,7 @@ requires-dist = [
     { name = "jupyter", specifier = ">1.1.0" },
     { name = "langchain", specifier = ">=0.3.27" },
     { name = "langchain-anthropic", specifier = ">=0.3.17" },
+    { name = "langchain-chroma", specifier = ">=0.2.5" },
     { name = "langchain-community", specifier = ">=0.3.27" },
     { name = "langchain-core", specifier = ">=0.3.72" },
     { name = "langchain-experimental", specifier = ">=0.3.4" },

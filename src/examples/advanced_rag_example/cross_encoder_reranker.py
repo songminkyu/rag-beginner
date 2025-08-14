@@ -7,8 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1R4CV2R-svixZVUX6jeIzEhJG1F5cZnBC
 """
 
-!pip install langchain_openai langchain_community langchain_chroma pypdf
-
 import os
 import requests
 from typing import List
